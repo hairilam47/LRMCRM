@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+/* LOYA design tokens v1.0 — reconciled from cart.css / form.css / input.css / loader.css */
+@theme inline {
+  --color-canvas: #f6f6f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #efeff3;
+  --color-panel-dark: #212121;
+  --color-panel-dark-2: #2a2a2a;
+  --color-panel-line: #414141;
+  --color-ink: #2b2b2f;
+  --color-ink-soft: #47484b;
+  --color-ink-faint: #7a7c81;
+  --color-ink-ghost: #a6a8af;
+  --color-line: #e5e5e5;
+  --color-line-soft: #efeff3;
+  --color-primary: #115dfc;
+  --color-primary-deep: #0550ed;
+  --color-brand-a: #1cb0ff;
+  --color-brand-b: #40ff99;
+  --color-success: #17b26a;
+  --color-success-soft: #e7f7ef;
+  --color-warn: #f79009;
+  --color-warn-soft: #fef2e3;
+  --color-danger: #e5484d;
+  --color-danger-soft: #fdecec;
+  --color-tier-bronze: #b4763b;
+  --color-tier-silver: #8e96a3;
+  --color-tier-gold: #dba514;
+  --radius-shell: 19px;
+  --radius-card: 12px;
+  --radius-control: 7px;
+  --radius-input: 5px;
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-ui: 'Instrument Sans', system-ui, sans-serif;
+  --font-data: 'Spline Sans Mono', ui-monospace, monospace;
+  --shadow-card: 0 12px 26px rgba(0, 0, 0, 0.07), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --ease-loya: cubic-bezier(0.15, 0.83, 0.66, 1);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+@layer components {
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 36px; padding: 0 16px;
+    background: linear-gradient(180deg, #4480ff 0%, #115dfc 50%, #0550ed 100%);
+    box-shadow: 0 0.5px 0.5px #efefef, 0 1px 0.5px rgba(239, 239, 239, 0.5);
+    border: 0; border-radius: var(--radius-control);
+    color: #fff; font-weight: 600; font-size: 13px;
+    cursor: pointer; transition: filter 0.3s var(--ease-loya);
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:disabled { opacity: 0.55; cursor: default; filter: none; }
+  .btn-primary:focus-visible { outline: 2px solid #242424; outline-offset: 2px; }
+
+  .btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 36px; padding: 0 14px;
+    background: var(--color-surface); border: 1px solid var(--color-line);
+    border-radius: var(--radius-control); color: var(--color-ink-soft);
+    font-weight: 600; font-size: 13px; cursor: pointer;
+    filter: drop-shadow(0 1px 0 #efefef);
+  }
+  .btn-ghost:hover { background: var(--color-surface-muted); }
+
+  .card {
+    background: var(--color-surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  .card-title {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; border-bottom: 1px solid var(--color-line-soft);
+    font-weight: 700; font-size: 11px; color: #63656b;
+    letter-spacing: 0.4px; text-transform: uppercase;
+  }
+
+  /* Floating-label field — input.css coolinput, light shell restyle */
+  .field { display: flex; flex-direction: column; width: 100%; }
+  .field > label {
+    font-weight: 700; font-size: 11px; color: var(--color-primary);
+    position: relative; top: 8px; margin-left: 10px; padding: 0 4px;
+    background: var(--color-surface); width: fit-content; z-index: 1;
+  }
+  .field > input, .field > select {
+    height: 38px; padding: 0 12px;
+    font-weight: 500; font-size: 13px; color: var(--color-ink);
+    border: 1px solid var(--color-line); border-radius: var(--radius-input);
+    background: var(--color-surface); outline: none;
+    transition: box-shadow 0.3s var(--ease-loya), border-color 0.3s var(--ease-loya);
+  }
+  .field > input:focus, .field > select:focus {
+    border-color: transparent; box-shadow: 0 0 0 2px #242424;
+  }
+
+  /* Dark auth field — form.css floating label preserved */
+  .field-dark { position: relative; display: flex; flex-direction: column; }
+  .field-dark input {
+    color: #fff; background: transparent;
+    border: 1px solid var(--color-panel-line);
+    border-radius: var(--radius-input); padding: 11px 10px; outline: none;
+    font-weight: 500; font-size: 14px;
+    transition: box-shadow 0.3s var(--ease-loya), border-color 0.3s var(--ease-loya);
+  }
+  .field-dark label {
+    position: absolute; top: 0; left: 0; padding: 11px 10px;
+    color: #8a8a8a; pointer-events: none; font-weight: 500; font-size: 13px;
+    transition: 0.35s;
+  }
+  .field-dark input:focus ~ label, .field-dark input:valid ~ label {
+    top: -19px; left: 0; padding: 10px 0 0;
+    color: #bdb8b8; font-size: 11px; background: var(--color-panel-dark);
+  }
+  .field-dark input:focus { box-shadow: 0 0 0 2px var(--color-brand-b); border-color: transparent; }
+
+  /* Quantity stepper — cart.css */
+  .stepper {
+    height: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr;
+    background: var(--color-surface); border: 1px solid var(--color-line);
+    border-radius: var(--radius-control);
+    filter: drop-shadow(0 1px 0 #efefef);
+  }
+  .stepper button {
+    border: 0; background: transparent; cursor: pointer;
+    font-weight: 700; font-size: 15px; color: var(--color-ink-soft);
+    padding-bottom: 2px;
+  }
+  .stepper button:focus-visible { outline: 2px solid #242424; border-radius: 4px; }
+  .stepper .qty {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-data); font-weight: 700; font-size: 14px;
+    color: var(--color-ink-soft); padding-bottom: 2px;
+  }
+
+  /* Tier avatar rings */
+  .avatar {
+    border-radius: 9999px; background: var(--color-surface-muted);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: var(--color-ink-soft); position: relative; flex-shrink: 0;
+  }
+  .avatar.ring-gold::after, .avatar.ring-silver::after, .avatar.ring-bronze::after {
+    content: ""; position: absolute; inset: -3px; border-radius: 9999px; border: 2px solid;
+  }
+  .avatar.ring-gold::after { border-color: var(--color-tier-gold); }
+  .avatar.ring-silver::after { border-color: var(--color-tier-silver); }
+  .avatar.ring-bronze::after { border-color: var(--color-tier-bronze); }
+
+  /* Wave loader — loader.css recolored */
+  .loading-wave { width: 100px; height: 40px; display: flex; justify-content: center; align-items: flex-end; gap: 7px; }
+  .loading-bar { width: 10px; height: 8px; background: var(--color-primary); border-radius: 5px; animation: loya-wave 1s ease-in-out infinite; }
+  .loading-bar:nth-child(2) { animation-delay: 0.1s; }
+  .loading-bar:nth-child(3) { animation-delay: 0.2s; }
+  .loading-bar:nth-child(4) { animation-delay: 0.3s; }
+
+  /* Thermal receipt — the signature element */
+  .receipt {
+    background: #fdfdfb; border-radius: 4px 4px 0 0; padding: 22px 20px 26px;
+    font-family: var(--font-data); font-size: 12px; color: #3a3a3e;
+    box-shadow: var(--shadow-card); position: relative;
+  }
+  .receipt::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -9px; height: 10px;
+    background: radial-gradient(circle at 8px -2px, transparent 6px, #fdfdfb 6.5px);
+    background-size: 16px 10px; background-repeat: repeat-x;
+  }
+  .receipt-print { animation: receipt-print 0.7s var(--ease-loya) both; transform-origin: top; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+    border-radius: 7px; color: #b9b9b9; text-decoration: none;
+    font-weight: 500; font-size: 13px; position: relative;
+  }
+  .nav-item:hover { background: #2a2a2a; color: #fff; }
+  .nav-item.active { background: #2a2a2a; color: #fff; font-weight: 600; }
+  .nav-item.active::before {
+    content: ""; position: absolute; left: -12px; top: 6px; bottom: 6px; width: 3px;
+    border-radius: 3px; background: linear-gradient(120deg, #1cb0ff, #40ff99);
+  }
+  .nav-item.rail.active::before { display: none; }
+  .nav-item.rail.active { box-shadow: inset 0 0 0 1.5px rgba(64, 255, 153, 0.5); }
+}
+
+@keyframes loya-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } }
+@keyframes receipt-print {
+  from { clip-path: inset(0 0 100% 0); opacity: 0.4; }
+  to { clip-path: inset(0 0 0% 0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar { animation: none; height: 18px; }
+  .receipt-print { animation: none; }
+}
