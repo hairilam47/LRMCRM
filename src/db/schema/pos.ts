@@ -44,7 +44,18 @@ export const guestProfiles = pgTable("guest_profiles", {
 
 /* ------------------------- Marketing / Messaging ------------------------- */
 
-export const outboxStatus = pgEnum("outbox_status", ["queued", "sent_mock", "failed"]);
+/**
+ * "sent_mock" is kept only for backward compatibility with rows written by
+ * the prototype's original mock-only dispatch loop — new dispatches (mock,
+ * console, or a real provider like OpenWA) write "sent". "delivered"/"read"
+ * are advanced asynchronously by inbound provider webhooks (see
+ * src/app/api/whatsapp/webhook/route.ts) once a provider actually reports
+ * ack progression; providers that don't (mock/console) simply never move a
+ * row past "sent".
+ */
+export const outboxStatus = pgEnum("outbox_status", [
+  "queued", "sent_mock", "sent", "delivered", "read", "failed",
+]);
 
 export const automationRules = pgTable("automation_rules", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -68,11 +79,22 @@ export const messageOutbox = pgTable("message_outbox", {
   orgId: uuid("org_id").notNull().references(() => organizations.id),
   memberId: uuid("member_id"),
   leadId: uuid("lead_id"),
-  channel: text("channel").notNull(), // sms | push | email
+  channel: text("channel").notNull(), // sms | push | email | whatsapp
   subject: text("subject"),
   body: text("body").notNull(),
+  mediaUrl: text("media_url"), // optional image/video/document URL (whatsapp blasts)
+  // Resolved WhatsApp chatId ("<digits>@c.us") snapshotted at send time (see
+  // src/lib/phone.ts). Lets the inbound webhook correlate ack/failed events
+  // by direct equality instead of re-deriving+joining through contacts.phone
+  // on every delivery. Only ever set for channel = "whatsapp".
+  toChatId: text("to_chat_id"),
   ruleName: text("rule_name"),
+  // Set only for rows fanned out by a blast campaign; loose reference (no FK), same
+  // convention as memberId/leadId above — see src/db/schema/blast.ts.
+  campaignId: uuid("campaign_id"),
   status: outboxStatus("status").notNull().default("queued"),
+  providerRef: text("provider_ref"), // provider-side message id, for webhook ack correlation
+  error: text("error"), // last known failure reason, if status = failed
   scheduledFor: timestamp("scheduled_for"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

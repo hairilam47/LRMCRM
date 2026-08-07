@@ -48,7 +48,10 @@ const groups: NavGroup[] = [
   {
     workspace: "loyalty",
     label: "Marketing",
-    items: [{ href: "/loyalty/marketing/outbox", label: "Outbox", roles: ["admin", "marketing"], icon: IconSend }],
+    items: [
+      { href: "/loyalty/marketing/blast", label: "Blast", roles: ["admin", "marketing"], icon: IconSend },
+      { href: "/loyalty/marketing/outbox", label: "Outbox", roles: ["admin", "marketing"], icon: IconSend },
+    ],
   },
 ];
 

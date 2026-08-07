@@ -27,10 +27,14 @@ export async function dispatchOutbox(orgId: string, limit = 50) {
   let sent = 0, failed = 0;
   for (const { msg, phone } of due) {
     const outcome = await provider.send({
-      channel: msg.channel, to: phone ?? undefined, subject: msg.subject, body: msg.body,
+      channel: msg.channel, to: phone ?? undefined, subject: msg.subject, body: msg.body, mediaUrl: msg.mediaUrl,
     });
     await db.update(messageOutbox)
-      .set({ status: outcome.ok ? "sent_mock" : "failed" })
+      .set({
+        status: outcome.ok ? "sent" : "failed",
+        providerRef: outcome.providerRef ?? null,
+        error: outcome.ok ? null : (outcome.error ?? "unknown error"),
+      })
       .where(eq(messageOutbox.id, msg.id));
     if (outcome.ok) sent++; else failed++;
   }

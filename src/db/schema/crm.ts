@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, integer, jsonb, pgEnum,
+  pgTable, uuid, text, timestamp, integer, boolean, jsonb, pgEnum,
 } from "drizzle-orm/pg-core";
 import { organizations, users } from "./core";
 
@@ -24,6 +24,13 @@ export const contacts = pgTable("contacts", {
   email: text("email"),
   phone: text("phone"),
   title: text("title"),
+  /**
+   * Explicit WhatsApp marketing opt-in. Defaults false — a contact must
+   * actively consent before a blast campaign can target them. See
+   * src/modules/blast/audience.ts, which filters on this column.
+   */
+  waConsent: boolean("wa_consent").notNull().default(false),
+  waConsentAt: timestamp("wa_consent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -1,6 +1,6 @@
 # Integration Design: WhatsApp via OpenWA
 
-**Status: design note — not implemented.** This is groundwork for the future merge, written before any provider/webhook code is added, per the "analyze requirements and confirm we can run this locally before we start to merge" ask that prompted it.
+**Status: implemented (single-send provider, inbound webhook, and bulk blast campaigns).** This note started as design-only groundwork and now doubles as the as-built reference — §4/§5 describe what's actually in the codebase; §9 covers the blast feature this seam was extended for. See [`docs/blast-campaigns.md`](./blast-campaigns.md) for how to use it.
 
 ## 1. Context
 
@@ -32,54 +32,61 @@ LRMCRM deploys to Vercel as stateless serverless functions (`vercel.json` is min
 
 **Conclusion: OpenWA runs as its own independently-hosted, always-on service** (a VM or a platform like Fly.io/Railway/Render — anywhere that isn't Vercel functions), and LRMCRM talks to it purely as an **HTTP client**. No monorepo merge, no embedding OpenWA's NestJS code inside the Next.js app — loose HTTP coupling only, which also happens to be exactly the pattern the `TwilioProvider` example already models.
 
-## 4. Proposed design — outbound (LRMCRM → OpenWA)
+## 4. Outbound (LRMCRM → OpenWA) — implemented
 
-Add a new provider alongside the existing ones:
+`OpenWaProvider` in `src/modules/automation/providers.ts`, registered as `PROVIDERS.whatsapp`. Used by the *existing* single-message automation path (`dispatch.ts`'s outbox drain — e.g. a POS-triggered rule with `channel: "whatsapp"`), **not** by blast campaigns — see §9 for why bulk sends go through a separate path.
 
 ```ts
 export class OpenWaProvider implements EspProvider {
   name = "openwa";
   async send(msg: OutboundMessage): Promise<DispatchOutcome> {
-    const res = await fetch(`${process.env.OPENWA_BASE_URL}/api/sessions/${process.env.OPENWA_SESSION_ID}/messages/send-text`, {
+    const chatId = toWhatsAppChatId(msg.to); // src/lib/phone.ts — "<digits>@c.us"
+    const endpoint = msg.mediaUrl ? "send-image" : "send-text";
+    const res = await fetch(`${process.env.OPENWA_BASE_URL}/api/sessions/${process.env.OPENWA_SESSION_ID}/messages/${endpoint}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENWA_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ to: msg.to, text: msg.body }),
+      headers: { Authorization: `Bearer ${process.env.OPENWA_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(msg.mediaUrl ? { chatId, url: msg.mediaUrl, caption: msg.body } : { chatId, text: msg.body }),
     });
-    return res.ok ? { ok: true, providerRef: (await res.json()).id } : { ok: false, error: await res.text() };
+    // ... error handling, returns { ok, providerRef, error }
   }
 }
 ```
 
-Register it as `PROVIDERS.whatsapp = new OpenWaProvider()`, and teach `messageOutbox.channel` to recognize `"whatsapp"` as a value.
+Env vars: `OPENWA_BASE_URL`, `OPENWA_API_KEY` (an OPERATOR-role key, ideally scoped via `allowedSessions` to just `OPENWA_SESSION_ID`), `OPENWA_SESSION_ID` (a session already paired to a real WhatsApp number — pairing is a manual, human, one-time step, see §7). All three optional — the provider returns a clean `{ ok: false, error }` rather than throwing when unconfigured, so the rest of the app runs fine without WhatsApp set up.
 
-New env vars needed: `OPENWA_BASE_URL`, `OPENWA_API_KEY` (an OpenWA-issued API key, see its `AuthService` auth model), `OPENWA_SESSION_ID` (the paired WhatsApp session to send from — see §7, session creation/pairing is a separate, manual, one-time step).
+Confirmed real endpoints: `POST /api/sessions/:sessionId/messages/send-text` and `.../send-image` (`src/modules/message/message.controller.ts`), API-key-authenticated via `Authorization: Bearer`.
 
-Confirmed real endpoint on the OpenWA side: `POST /api/sessions/:sessionId/messages/send-text` (`src/modules/message/message.controller.ts`), API-key-authenticated.
+## 5. Inbound (OpenWA → LRMCRM) — implemented
 
-## 5. Proposed design — inbound (OpenWA → LRMCRM)
+`src/app/api/whatsapp/webhook/route.ts`, mirroring `src/app/api/pos/webhook/route.ts`'s HMAC pattern with two differences: OpenWA signs as **`X-OpenWA-Signature: sha256=<hex>`** (prefixed, vs. the POS route's unprefixed `x-loya-signature`), and verification is **required** whenever `OPENWA_WEBHOOK_SECRET` is set — not only-if-a-signature-is-present like the POS route (which intentionally also accepts its own built-in simulator's unsigned requests). This endpoint has exactly one legitimate caller and mutates data, so an unsigned request is rejected outright once a secret exists; skipped only when no secret is configured at all.
 
-New route `src/app/api/whatsapp/webhook/route.ts`, mirroring the existing `src/app/api/pos/webhook/route.ts` pattern almost exactly (same repo, same file for reference): read the raw body, verify an HMAC-SHA256 signature with `timingSafeEqual`, parse/validate, then handle.
+Handles two event types today:
+- **`message.ack` / `message.failed`** — advances the matching `message_outbox` row's status (`sent → delivered → read`, or `→ failed`), correlated by `message_outbox.to_chat_id` (a snapshot of the resolved `<digits>@c.us` chatId, set at send time — see §9) matched against the chatId embedded in OpenWA's `messageId` (format `<fromMe>_<chatId>_<suffix>`).
+- **`message.received`** — opt-out handling: a reply body of `stop`/`unsubscribe`/`berhenti`/`opt out` (case-insensitive) flips `contacts.wa_consent` to `false` for the matching phone number. This is the one inbound signal every WhatsApp Business sender is expected to honor.
 
-The one concrete difference from the POS webhook: OpenWA signs its webhook deliveries as **`X-OpenWA-Signature: sha256=<hex>`** (confirmed in `src/modules/webhook/webhook.service.ts` on the OpenWA side — note the `sha256=` prefix on the header value, unlike LRMCRM's own `x-loya-signature` header on the POS route which has no prefix), computed over the raw body with the webhook's own `secret` (configured when registering the webhook via OpenWA's `POST /api/sessions/:sessionId/webhooks`, not the same secret as `POS_WEBHOOK_SECRET`). Events to expect: `message.received`, `message.ack`, `message.failed`, and others per OpenWA's `docs/06-api-specification.md`.
+All other subscribed events are accepted (`200`) and ignored — OpenWA's webhook delivery is at-least-once with retry, so an unrecognized event type must not be treated as an error.
 
-## 6. What this note is *not*
+## 6. What this integration is *not*
 
 - Not a monorepo merge. OpenWA and LRMCRM stay separate repos/deployments.
-- Not a code-level embedding of OpenWA inside the Next.js app.
-- Not an implementation — no provider class, no webhook route, and no env vars have been added to the codebase yet. This is the design to implement against once that work is greenlit.
+- Not a code-level embedding of OpenWA inside the Next.js app — every call is a plain `fetch()` over HTTP.
 
-## 7. Open items — deferred to the actual implementation phase
+## 7. Open items
 
-- **Session ownership**: who creates and pairs (QR-scans) the WhatsApp session LRMCRM will send from, and on what phone number/account. Inherently a manual, human, one-time step (see OpenWA's `docs/local-dev-sandbox-notes.md`, §5).
-- **Retry/backoff** on `OpenWaProvider.send()` — `dispatch.ts`'s existing outbox-drain loop should be checked for what retry semantics it already assumes from a provider.
-- **Mapping inbound events** (`message.received` etc.) onto LRMCRM's existing automation engine (`src/modules/automation/engine.ts`) — e.g. does an inbound WhatsApp reply need to feed lead scoring, loyalty triggers, both, neither?
-- **Secrets management**: `OPENWA_API_KEY` (and the webhook secret) need to land in Vercel's env var config for deployed environments — not just local `.env`.
-- **Multi-tenancy**: `getProvider()` is already org-scoped (`org_settings.espProvider`) — decide whether all orgs share one OpenWA session/number or each org needs its own `OPENWA_SESSION_ID`.
+- **Session ownership**: who creates and pairs (QR-scans) the WhatsApp session LRMCRM sends from, and on what phone/account. Still an inherently manual, human, one-time step (see OpenWA's `docs/local-dev-sandbox-notes.md`, §5) — nothing here automates it.
+- **Retry/backoff**: `dispatch.ts`'s single-message outbox drain still has no retry — a failed row just gets marked `failed`. Blast campaigns (§9) inherit OpenWA's own bulk-send pacing/retry instead, since they bypass this loop entirely.
+- **Mapping inbound events onto the automation engine**: `message.received` currently only feeds the opt-out check (§5) — it doesn't yet touch `src/modules/automation/engine.ts` (lead scoring, loyalty triggers). Still open if a two-way conversational flow is ever wanted.
+- **Secrets management**: `OPENWA_API_KEY`/`OPENWA_WEBHOOK_SECRET`/`ANTHROPIC_API_KEY` need to land in Vercel's env var config for deployed environments — local `.env` only covers dev.
+- **Multi-tenancy**: shipped as **global env vars for v1** (one shared WhatsApp number/session for the whole app) — matches the existing Twilio-stub convention and this deployment's current single-org reality. `getProvider()` is still org-scoped (`org_settings.espProvider`), so per-org `OPENWA_SESSION_ID` config is a natural extension if this ever runs multi-org, but nothing forces it today.
 
 ## 8. Related
 
 - [`docs/local-dev-sandbox-notes.md`](./local-dev-sandbox-notes.md) (this repo) — running LRMCRM locally.
+- [`docs/blast-campaigns.md`](./blast-campaigns.md) (this repo) — how to use the blast feature, consent model, media/AI-drafting notes.
 - `docs/local-dev-sandbox-notes.md` in the OpenWA repo — running OpenWA locally, including why real WhatsApp pairing can't be done in a sandbox.
+
+## 9. Blast campaigns — bulk sends bypass the single-message provider
+
+The original design above (`OpenWaProvider.send()`, one message per call) is the right shape for the *existing* automation flows (a POS receipt, a win-back nudge) — low volume, one recipient at a time. It is the *wrong* shape for a marketing blast to hundreds of opted-in members: looping `send()` gives zero pacing between calls (`dispatch.ts`'s loop has none), which is exactly the "cold-blasting strangers" pattern OpenWA's own README calls out as the top way to get a WhatsApp number banned.
+
+Instead, `src/modules/blast/` (see [`docs/blast-campaigns.md`](./blast-campaigns.md) for the full design) talks to OpenWA's **`POST /api/sessions/:sessionId/messages/send-bulk`** directly — up to 100 recipients per call, OpenWA paces and sequences delivery server-side (`delayBetweenMessages`/`randomizeDelay`), and returns a `batchId` immediately (202) while sending continues asynchronously. `message_outbox` rows gained `media_url`, `to_chat_id`, `provider_ref`, `campaign_id`, and `error` columns to support this — see the migration in `src/db/migrations/` for the exact shape. A new `blast_campaigns` table tracks campaign-level intent and aggregate progress; `contacts.wa_consent`/`wa_consent_at` gate who can be targeted at all.

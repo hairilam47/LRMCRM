@@ -3,3 +3,4 @@ export * from "./crm";
 export * from "./loyalty";
 export * from "./pos";
 export * from "./audit";
+export * from "./blast";

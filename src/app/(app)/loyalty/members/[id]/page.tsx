@@ -9,6 +9,7 @@ import { rm, dt, timeAgo } from "@/lib/format";
 import { TierAvatar, TierChip } from "@/components/tier-avatar";
 import { WalletActions } from "./wallet-actions";
 import { AdjustBalance } from "./adjust-balance";
+import { ConsentToggle } from "./consent-toggle";
 
 export const dynamic = "force-dynamic";
 const { loyaltyMembers, loyaltyTiers, contacts, stampCards, stampProgress, voucherIssuances, vouchers, prepaidPacks, prepaidPackPurchases } = schema;
@@ -133,6 +134,8 @@ export default async function MemberDetail({
               <div className="text-right">Tier<b className="font-data block text-white mt-0.5">{row.tier}</b></div>
             </div>
           </div>
+
+          <ConsentToggle memberId={id} consent={row.contact.waConsent} />
 
           <WalletActions memberId={id} packs={packs.map((p) => ({ id: p.id, name: p.name, priceSen: p.priceSen, quantity: p.quantity, itemCategory: p.itemCategory }))} />
 
